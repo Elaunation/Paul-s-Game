@@ -560,6 +560,7 @@
         let submittedNames = {};
         let isValidating = false;
         let playersWhoPlayed = new Set();
+        let lastAlphabetIndex = -1; // Track the last alphabet index used
         const WINNING_SCORE = 10;
 
         function showScreen(screenId) {
@@ -622,11 +623,16 @@
             const words = sentence.split(' ').filter(word => word.length > 0);
             const firstLetters = words.map(word => word[0].toUpperCase());
 
-            initialPairs = [];
             const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
             
+            // Continue from the last alphabet index used
             for (let i = 0; i < firstLetters.length; i++) {
-                const pair = firstLetters[i] + alphabet[i];
+                lastAlphabetIndex++;
+                if (lastAlphabetIndex >= alphabet.length) {
+                    alert('You have used all letters of the alphabet! Starting over from A.');
+                    lastAlphabetIndex = 0;
+                }
+                const pair = firstLetters[i] + alphabet[lastAlphabetIndex];
                 initialPairs.push(pair);
             }
 
@@ -665,12 +671,12 @@
             playersWhoPlayed.clear();
             gameActive = true;
 
-            // Initialize submitted names for all initials if not already done
-            if (Object.keys(submittedNames).length === 0) {
-                initialPairs.forEach(pair => {
+            // Initialize submitted names for new initials only
+            initialPairs.forEach(pair => {
+                if (!submittedNames[pair]) {
                     submittedNames[pair] = [];
-                });
-            }
+                }
+            });
 
             showScreen('gameplayScreen');
             updateGameDisplay();
@@ -914,12 +920,13 @@
             // Check if all players have played
             if (playersWhoPlayed.size >= players.length) {
                 // All players played, but no one reached 10 points
-                // Reset for new round but keep scores
-                alert('All players have had their turn! No one reached 10 points yet. Starting a new round - keep playing!');
+                // Reset for new round but keep scores and alphabet position
+                alert('All players have had their turn! No one reached 10 points yet. Starting a new round - enter a new sentence!');
                 
-                // Reset for new round but KEEP scores
+                // Reset for new round but KEEP scores and lastAlphabetIndex
                 playersWhoPlayed.clear();
-                submittedNames = {}; // Clear used names for fresh round
+                // Don't reset submittedNames - it accumulates across rounds
+                // Don't reset lastAlphabetIndex - it continues from where it left off
                 
                 // Go back to sentence screen to start new round
                 showScreen('sentenceScreen');
@@ -991,6 +998,9 @@
                 `;
                 finalScoresDiv.appendChild(scoreItem);
             });
+            
+            // Reset alphabet index when there's a winner
+            lastAlphabetIndex = -1;
             
             showScreen('winScreen');
         }
