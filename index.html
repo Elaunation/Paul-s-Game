@@ -623,6 +623,9 @@
             const words = sentence.split(' ').filter(word => word.length > 0);
             const firstLetters = words.map(word => word[0].toUpperCase());
 
+            // Clear previous round's initials - start fresh for this round
+            initialPairs = [];
+            
             const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
             
             // Continue from the last alphabet index used
@@ -671,11 +674,10 @@
             playersWhoPlayed.clear();
             gameActive = true;
 
-            // Initialize submitted names for new initials only
+            // Initialize submitted names for this round's initials
+            submittedNames = {};
             initialPairs.forEach(pair => {
-                if (!submittedNames[pair]) {
-                    submittedNames[pair] = [];
-                }
+                submittedNames[pair] = [];
             });
 
             showScreen('gameplayScreen');
@@ -752,8 +754,14 @@
             const listDiv = document.getElementById('initialsUsedList');
             listDiv.innerHTML = '<h3 style="margin-bottom: 10px; color: #333;">Used Names:</h3>';
             
+            // Only show initials from the current round
+            if (initialPairs.length === 0) {
+                listDiv.innerHTML += '<p style="color: #999; font-size: 14px;">No initials yet</p>';
+                return;
+            }
+            
             initialPairs.forEach(pair => {
-                const names = submittedNames[pair];
+                const names = submittedNames[pair] || [];
                 const itemDiv = document.createElement('div');
                 itemDiv.className = 'initial-used-item' + (names.length > 0 ? ' completed' : '');
                 
@@ -791,7 +799,7 @@
             const currentInitial = initialPairs[currentInitialIndex];
             const nameUpper = name.toUpperCase();
             
-            // Check if already submitted for ANY initial
+            // Check if already submitted for ANY initial in current round
             for (let pair in submittedNames) {
                 if (submittedNames[pair].some(n => n.toUpperCase() === nameUpper)) {
                     return { valid: false, message: '❌ This name was already used!' };
@@ -806,7 +814,7 @@
                 };
             }
 
-            // Use Wikipedia API to verify if this is a famous person
+            // Use Wikipedia API to verify if this is a famous PERSON
             try {
                 const wikiResponse = await fetch(
                     `https://en.wikipedia.org/w/api.php?action=opensearch&search=${encodeURIComponent(name)}&limit=5&format=json&origin=*`
@@ -814,12 +822,52 @@
                 const wikiData = await wikiResponse.json();
                 
                 if (wikiData[1] && wikiData[1].length > 0) {
+                    // Check if any of the results match the name closely
                     const exactMatch = wikiData[1].some(result => 
                         result.toLowerCase() === name.toLowerCase()
                     );
                     
                     if (exactMatch) {
-                        return { valid: true, message: '✅ Valid! +1 point' };
+                        // Additional check: fetch the page to verify it's a person
+                        const pageTitle = wikiData[1].find(result => 
+                            result.toLowerCase() === name.toLowerCase()
+                        );
+                        
+                        const pageResponse = await fetch(
+                            `https://en.wikipedia.org/w/api.php?action=query&titles=${encodeURIComponent(pageTitle)}&prop=categories&format=json&origin=*`
+                        );
+                        const pageData = await pageResponse.json();
+                        
+                        // Check if the page has categories that indicate it's a person
+                        const pages = pageData.query.pages;
+                        const pageId = Object.keys(pages)[0];
+                        const categories = pages[pageId].categories || [];
+                        
+                        // Look for common person-related categories
+                        const isPersonCategory = categories.some(cat => {
+                            const catTitle = cat.title.toLowerCase();
+                            return catTitle.includes('births') || 
+                                   catTitle.includes('deaths') || 
+                                   catTitle.includes('people') ||
+                                   catTitle.includes('actors') ||
+                                   catTitle.includes('singers') ||
+                                   catTitle.includes('musicians') ||
+                                   catTitle.includes('athletes') ||
+                                   catTitle.includes('politicians') ||
+                                   catTitle.includes('writers') ||
+                                   catTitle.includes('directors') ||
+                                   catTitle.includes('artists');
+                        });
+                        
+                        if (isPersonCategory || categories.length === 0) {
+                            // If we can't determine or it looks like a person, accept it
+                            return { valid: true, message: '✅ Valid! +1 point' };
+                        } else {
+                            return { 
+                                valid: false, 
+                                message: '❌ Must be a person\'s name, not a company or thing!' 
+                            };
+                        }
                     }
                 }
                 
@@ -901,6 +949,7 @@
         function nextTurn() {
             currentInitialIndex++;
             
+            // Check if we've gone through all initials for this round
             if (currentInitialIndex >= initialPairs.length) {
                 currentInitialIndex = 0;
             }
@@ -925,8 +974,10 @@
                 
                 // Reset for new round but KEEP scores and lastAlphabetIndex
                 playersWhoPlayed.clear();
-                // Don't reset submittedNames - it accumulates across rounds
-                // Don't reset lastAlphabetIndex - it continues from where it left off
+                
+                // Clear the initials and submitted names for the new round
+                initialPairs = [];
+                submittedNames = {};
                 
                 // Go back to sentence screen to start new round
                 showScreen('sentenceScreen');
